@@ -1,0 +1,152 @@
+version: '3.8'
+
+services:
+  # API Gateway
+  api-gateway:
+    build:
+      context: ./services/api-gateway
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - API_GATEWAY_PORT=3000
+      - CARD_SERVICE_PORT=3001
+      - CHARGE_SERVICE_PORT=3002
+      - AUTH_SERVICE_PORT=3003
+      - ANALYTICS_SERVICE_PORT=3004
+      - REDIS_URI=redis://redis:6379
+      - JWT_PUBLIC_KEY_PATH=/app/keys/public.key
+      - RATE_LIMIT_WINDOW_MS=60000
+      - RATE_LIMIT_MAX_REQUESTS=100
+      - LOG_LEVEL=info
+    volumes:
+      - ./keys:/app/keys
+    depends_on:
+      - redis
+      - card-service
+      - charge-service
+    restart: unless-stopped
+    networks:
+      - ghostpay-network
+
+  # Card Service
+  card-service:
+    build:
+      context: ./services/card-service
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3001"
+    environment:
+      - CARD_SERVICE_PORT=3001
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=ghostpay
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - LOG_LEVEL=info
+    depends_on:
+      - postgres
+    restart: unless-stopped
+    networks:
+      - ghostpay-network
+
+  # Charge Service
+  charge-service:
+    build:
+      context: ./services/charge-service
+      dockerfile: Dockerfile
+    ports:
+      - "3002:3002"
+    environment:
+      - CHARGE_SERVICE_PORT=3002
+      - CARD_SERVICE_PORT=3001
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=ghostpay
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - LOG_LEVEL=info
+    depends_on:
+      - postgres
+      - card-service
+    restart: unless-stopped
+    networks:
+      - ghostpay-network
+
+  # PostgreSQL
+  postgres:
+    image: postgres:15-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=ghostpay
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - ghostpay-network
+
+  # MongoDB
+  mongo:
+    image: mongo:6-jammy
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    restart: unless-stopped
+    networks:
+      - ghostpay-network
+
+  # Redis
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    networks:
+      - ghostpay-network
+
+  # Prometheus
+  prometheus:
+    image: prom/prometheus:v2.45.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    restart: unless-stopped
+    networks:
+      - ghostpay-network
+
+  # Grafana
+  grafana:
+    image: grafana/grafana:10.1.0
+    ports:
+      - "3100:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+    networks:
+      - ghostpay-network
+
+volumes:
+  postgres-data:
+  mongo-data:
+  redis-data:
+  prometheus-data:
+  grafana-data:
+
+networks:
+  ghostpay-network:
+    driver: bridge

@@ -1,0 +1,342 @@
+openapi: 3.0.3
+info:
+  title: GhostPay-Lite API
+  description: A lightweight, microservice-based payment token API that issues single-use virtual cards and processes charges.
+  version: 1.0.0
+  contact:
+    name: GhostPay-Lite Support
+    email: support@ghostpay-lite.example.com
+servers:
+  - url: https://api.ghostpay-lite.example.com/v1
+    description: Production server
+  - url: https://staging-api.ghostpay-lite.example.com/v1
+    description: Staging server
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token obtained from the auth service
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        code:
+          type: string
+          description: Error code
+        message:
+          type: string
+          description: Error message
+        details:
+          type: object
+          description: Additional error details
+      required:
+        - code
+        - message
+
+    CardRequest:
+      type: object
+      properties:
+        amount:
+          type: number
+          format: float
+          description: The amount to load on the card
+          minimum: 0.01
+        currency:
+          type: string
+          description: The currency code (ISO 4217)
+          enum: [USD, EUR, GBP]
+        metadata:
+          type: object
+          description: Additional metadata for the card
+      required:
+        - amount
+        - currency
+
+    Card:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the card
+        status:
+          type: string
+          enum: [active, used, expired, cancelled]
+          description: Current status of the card
+        amount:
+          type: number
+          format: float
+          description: The amount loaded on the card
+        currency:
+          type: string
+          description: The currency code (ISO 4217)
+        cardNumber:
+          type: string
+          description: The masked card number (only last 4 digits visible)
+        expiryMonth:
+          type: integer
+          description: The expiry month (1-12)
+        expiryYear:
+          type: integer
+          description: The expiry year (4 digits)
+        cvv:
+          type: string
+          description: The CVV code (only visible on card creation)
+        createdAt:
+          type: string
+          format: date-time
+          description: When the card was created
+        metadata:
+          type: object
+          description: Additional metadata for the card
+      required:
+        - id
+        - status
+        - amount
+        - currency
+        - cardNumber
+        - expiryMonth
+        - expiryYear
+        - createdAt
+
+    ChargeRequest:
+      type: object
+      properties:
+        cardId:
+          type: string
+          format: uuid
+          description: The ID of the card to charge
+        amount:
+          type: number
+          format: float
+          description: The amount to charge
+          minimum: 0.01
+        currency:
+          type: string
+          description: The currency code (ISO 4217)
+          enum: [USD, EUR, GBP]
+        description:
+          type: string
+          description: Description of the charge
+        metadata:
+          type: object
+          description: Additional metadata for the charge
+      required:
+        - cardId
+        - amount
+        - currency
+
+    Charge:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the charge
+        cardId:
+          type: string
+          format: uuid
+          description: The ID of the card that was charged
+        status:
+          type: string
+          enum: [pending, succeeded, failed]
+          description: Current status of the charge
+        amount:
+          type: number
+          format: float
+          description: The amount charged
+        currency:
+          type: string
+          description: The currency code (ISO 4217)
+        description:
+          type: string
+          description: Description of the charge
+        createdAt:
+          type: string
+          format: date-time
+          description: When the charge was created
+        metadata:
+          type: object
+          description: Additional metadata for the charge
+      required:
+        - id
+        - cardId
+        - status
+        - amount
+        - currency
+        - createdAt
+
+paths:
+  /cards:
+    post:
+      summary: Issue a new single-use virtual card
+      description: Creates a new single-use virtual card with the specified amount and currency.
+      operationId: createCard
+      security:
+        - bearerAuth: []
+      tags:
+        - Cards
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CardRequest'
+      responses:
+        '201':
+          description: Card created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Card'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Too many requests
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+              description: Number of seconds to wait before retrying
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /cards/{id}:
+    get:
+      summary: Get card status
+      description: Retrieves the status and details of a card.
+      operationId: getCard
+      security:
+        - bearerAuth: []
+      tags:
+        - Cards
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The ID of the card to retrieve
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Card retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Card'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Card not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Too many requests
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+              description: Number of seconds to wait before retrying
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /charges:
+    post:
+      summary: Process a charge
+      description: Processes a charge against a single-use virtual card.
+      operationId: createCharge
+      security:
+        - bearerAuth: []
+      tags:
+        - Charges
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChargeRequest'
+      responses:
+        '201':
+          description: Charge created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Charge'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Card not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Card cannot be charged (already used, expired, etc.)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Too many requests
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+              description: Number of seconds to wait before retrying
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
